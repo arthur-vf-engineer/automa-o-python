@@ -1,72 +1,110 @@
 import time
-import pandas as pd
+import schedule
 from datetime import datetime, timedelta
 
 from source.reports import ReportClient
 from source.utils import salvar_relatorio_em_pasta
-from source.transformacao import main as main_transformacao
+from source.transformacao import main
 
 # -------------------------------------------------------------------
-def ler_pdvs_do_excel(caminho_arquivo="lojas.xlsx") -> list:
-    """Lê a coluna B (segunda coluna) do arquivo Excel e retorna uma lista de PDVs."""
-    try:
-        df_lojas = pd.read_excel(caminho_arquivo)
-        pdvs = df_lojas.iloc[:, 1].dropna().astype(str).str.replace(r'\.0$', '', regex=True).tolist()
-        return pdvs
-    except Exception as e:
-        print(f"[ERRO] Falha ao ler o arquivo {caminho_arquivo}: {e}")
-        return []
-
 def run_report() -> None:
-    pdvs = ler_pdvs_do_excel("lojas.xlsx")
-    if not pdvs:
-        print("Nenhum PDV encontrado no arquivo ou erro na leitura. Encerrando.")
-        return
-
+    """Baixa e salva relatórios dos últimos 31 dias (incluindo hoje)."""
     client = ReportClient()
     
+    # Define end_date como hoje e start_date como 31 dias antes
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=11)
+    start_date = end_date - timedelta(days=31)
     
-    print(f"[{datetime.now():%H:%M:%S}] Período definido: {start_date.strftime('%d/%m/%Y')} a {end_date.strftime('%d/%m/%Y')}")
-    print(f"Foram encontrados {len(pdvs)} PDVs para processar.\n")
+    print(f"[{datetime.now():%H:%M:%S}] Baixando relatórios de {start_date.strftime('%Y-%m-%d')} a {end_date.strftime('%Y-%m-%d')}")
 
-    for pdv in pdvs:
-        print(f"[{datetime.now():%H:%M:%S}] === INICIANDO DOWNLOAD PARA O PDV: {pdv} ===")
-        
-        current_date = start_date
-        while current_date <= end_date:
-            api_date_str = current_date.strftime("%Y-%m-%d")
-            file_date_str = current_date.strftime("%d-%m-%Y")
+    # Loop para cada dia no intervalo
+    current_date = start_date
+    while current_date <= end_date:
+        date_str = current_date.strftime("%Y-%m-%d")
+        print(f"[{datetime.now():%H:%M:%S}] Gerando relatório de {date_str}")
+
+        try:
+            # Baixa relatório do dia atual
+            bin_data = client.get_report(start_date=date_str, end_date=date_str)
             
-            nome_arquivo_final = f"{file_date_str}-{pdv}.xlsx"
+            # Salva o relatório
+            salvar_relatorio_em_pasta(
+                bin_data,
+                start_date=date_str,
+                base_dir="relatorios",
+                nome_arquivo=f"{date_str}.xlsx",
+            )
+            print(f"[OK] Relatório salvo em relatorios/{date_str}.xlsx")
+        except Exception as e:
+            print(f"[ERRO] Falha em {date_str}: {e}")
 
-            print(f"  -> Baixando {api_date_str} (PDV {pdv})...", end=" ")
-
-            try:
-                bin_data = client.get_report(start_date=api_date_str, end_date=api_date_str, pdv=pdv)
-                
-                salvar_relatorio_em_pasta(
-                    bin_data,
-                    start_date=api_date_str, 
-                    base_dir="relatorios",
-                    nome_arquivo=nome_arquivo_final,
-                )
-                print(f"[OK] {nome_arquivo_final}")
-            except Exception as e:
-                print(f"[ERRO] {e}")
-
-            current_date += timedelta(days=1)
-            
-        print(f"[{datetime.now():%H:%M:%S}] === PDV {pdv} FINALIZADO ===\n")
+        # Avança para o próximo dia
+        current_date += timedelta(days=1)
 
 # -------------------------------------------------------------------
 
 if __name__ == "__main__":
     run_report()
-    print("Aguardando 15 segundos para garantir que todos os relatórios foram salvos...")
+    print("Aguardando 15 segundos para garantir que os relatórios foram salvos...")
     time.sleep(15) 
     
-    main_transformacao()
+    main()
     print("Aguardando 30 segundos para garantir que a base foi exportada...")
-    time.sleep(30)
+    time.sleep(15)
+
+# ----------------------------------------------------------------------------------------------------------------------------------------- #
+
+# import time
+# from datetime import datetime, timedelta
+# from source.reports import ReportClient
+# from source.utils import salvar_relatorio_em_pasta
+# from source.transformacao import main
+
+# def run_report() -> None:
+#     """Baixa e salva relatórios de todos os dias do ano atual (dia a dia)."""
+#     client = ReportClient()
+    
+#     # Obtém o ano atual
+#     ano_atual = datetime.now().year - 1
+    
+#     # Define start_date como 01/01 do ano atual
+#     start_date = datetime(ano_atual, 1, 1)
+    
+#     # Define end_date como hoje (ou 31/12 se quiser todo o ano)
+#     end_date = datetime.now()  # Para pegar até hoje
+#     # end_date = datetime(ano_atual, 12, 31)  # Para pegar até 31/12 independente do dia atual
+    
+#     print(f"[{datetime.now():%H:%M:%S}] Baixando relatórios de {start_date.strftime('%Y-%m-%d')} a {end_date.strftime('%Y-%m-%d')}")
+
+#     # Loop para cada dia no intervalo
+#     current_date = start_date
+#     while current_date <= end_date:
+#         date_str = current_date.strftime("%Y-%m-%d")
+#         print(f"[{datetime.now():%H:%M:%S}] Gerando relatório de {date_str}")
+
+#         try:
+#             # Baixa relatório do dia atual
+#             bin_data = client.get_report(start_date=date_str, end_date=date_str)
+            
+#             # Salva o relatório
+#             salvar_relatorio_em_pasta(
+#                 bin_data,
+#                 start_date=date_str,
+#                 base_dir="relatorios",
+#                 nome_arquivo=f"{date_str}.xlsx",
+#             )
+#             print(f"[OK] Relatório salvo em relatorios/{date_str}.xlsx")
+#         except Exception as e:
+#             print(f"[ERRO] Falha em {date_str}: {e}")
+
+#         # Avança para o próximo dia
+#         current_date += timedelta(days=1)
+
+# if __name__ == "__main__":
+#     run_report()
+#     print("Aguardando 15 segundos para garantir que os relatórios foram salvos...")
+#     time.sleep(15) 
+    
+#     main()
+#     print("Aguardando 30 segundos para garantir que a base foi exportada...")
+#     time.sleep(15)
